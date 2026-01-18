@@ -1,4 +1,3 @@
-
 tag_types = {0: "nothing", 16: "MIFARE Classic 1K"}
 
 
@@ -9,38 +8,53 @@ def read_rfid(rdr, address=8):
 
         # If no card found, return immediately
         if stat != rdr.OK:
-            return 0, [0]
+            return 0, ""
 
         # FOUND -> ASK FOR UID
         (stat, raw_uid) = rdr.anticoll()
 
         # If can't read UID, return immediately
         if stat != rdr.OK:
-            return 0, [0]
+            return 0, ""
 
         # UID RECEIVED
         uid = "0x" + "%02x%02x%02x%02x" % (raw_uid[0], raw_uid[1], raw_uid[2], raw_uid[3])
 
         # If failed to select tag, return immediately
         if rdr.select_tag(raw_uid) != rdr.OK:
-            return uid, [0]
+            return uid, ""
 
         # If authentication error, return immediately
         if rdr.auth(rdr.AUTHENT1A, address, rdr.KEY, raw_uid) != rdr.OK:
-            return uid, [0]
+            return uid, ""
 
         # READ
         data = rdr.read(address)
 
-        # Format data as a string of hexadecimal numbers
-        data = " ".join("0x{:02x}".format(b) for b in data)
+        # If read returned None or empty, stop crypto and return safe payload
+        if not data:
+            try:
+                rdr.stop_crypto1()
+            except Exception:
+                pass
+            return uid, ""
 
-        rdr.stop_crypto1()
-        return uid, data
+        # Format data as a string of hexadecimal numbers
+        try:
+            data_str = " ".join("0x{:02x}".format(b) for b in data)
+        except Exception:
+            data_str = ""
+
+        try:
+            rdr.stop_crypto1()
+        except Exception:
+            pass
+
+        return uid, data_str
 
     except Exception as e:
         print("Error reading RFID tag:", e)
-        return 0, [0]
+        return 0, ""
 
 
 def write_rfid(rdr, uid, data, address=8):
